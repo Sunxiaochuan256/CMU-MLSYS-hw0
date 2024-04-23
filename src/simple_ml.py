@@ -20,7 +20,7 @@ def add(x, y):
         Sum of x + y
     """
     ### BEGIN YOUR CODE
-    pass
+    return x - y
     ### END YOUR CODE
 
 
@@ -48,7 +48,33 @@ def parse_mnist(image_filename, label_filename):
                 for MNIST will contain the values 0-9.
     """
     ### BEGIN YOUR CODE
-    pass
+    # 打开并解压缩图像文件
+    with gzip.open(image_filename, 'rb') as image_file:
+        # 读取文件头，跳过前16字节
+        image_file.read(16)
+        # 读取图像数据
+        image_data = image_file.read()
+
+    # 打开并解压缩标签文件
+    with gzip.open(label_filename, 'rb') as label_file:
+        # 读取文件头，跳过前8字节
+        label_file.read(8)
+        # 读取标签数据
+        label_data = label_file.read()
+
+    # 将图像和标签数据转换为NumPy数组
+    image_array = np.frombuffer(image_data, dtype=np.uint8)
+    label_array = np.frombuffer(label_data, dtype=np.uint8)
+
+    # 获取图像的维度
+    num_images = len(label_array)
+    image_dim = len(image_array) // num_images
+
+    # 将图像数据转换为浮点数并归一化
+    image_array = image_array.astype(np.float32) / 255.0
+
+    # 返回图像数据和标签数据的元组
+    return image_array.reshape(num_images, image_dim), label_array
     ### END YOUR CODE
 
 
@@ -68,7 +94,24 @@ def softmax_loss(Z, y):
         Average softmax loss over the sample.
     """
     ### BEGIN YOUR CODE
-    pass
+    # 确保输入的logits Z是浮点数，以便进行exp计算
+    Z = Z.astype(np.float64)
+
+    # 计算log-sum-exp，即对每个样本的logits应用exp，然后按行求和，最后取对数。
+    # 这一步会得到每个样本的log-sum-exp值。
+    log_sum_exp = np.log(np.sum(np.exp(Z), axis=1))
+
+    # 从log-sum-exp中减去每个样本真实类别的logit。
+    # np.arange(y.shape[0])生成一个索引数组，用于选择每个样本的真实类别的logit。
+    correct_logit = Z[np.arange(y.shape[0]), y]
+
+    # 计算每个样本的softmax损失
+    softmax_loss_per_sample = log_sum_exp - correct_logit
+
+    # 计算所有样本的平均softmax损失
+    average_loss = np.mean(softmax_loss_per_sample)
+
+    return average_loss
     ### END YOUR CODE
 
 
@@ -91,9 +134,33 @@ def softmax_regression_epoch(X, y, theta, lr = 0.1, batch=100):
         None
     """
     ### BEGIN YOUR CODE
-    pass
+    num_examples = X.shape[0]
+    i = 0
+    
+    while i + batch <= num_examples:
+        inputs = X[i:i+batch]
+        labels = y[i:i+batch]
+        softmax_regression_batch(inputs, labels, theta, lr)
+        i += batch
+    
+    if i < num_examples:
+        inputs = X[i:num_examples]
+        labels = y[i:num_examples]
+        softmax_regression_batch(inputs, labels, theta, lr)
     ### END YOUR CODE
 
+def softmax_regression_batch(X, y, theta, lr = 0.1):
+    input_dim = X.shape[1]
+    output_dim = theta.shape[1]
+    one_hot = np.zeros((X.shape[0], theta.shape[1]), dtype=np.int8)
+    np.put_along_axis(one_hot, np.expand_dims(y, axis=1), 1, axis=1)
+
+    h = X@theta
+    eh = np.exp(h)
+    z = eh / eh.sum(axis=1, keepdims=True)
+    gradient = X.transpose()@(z - one_hot) # (batch, output_dim)
+    sub = gradient*lr / (X.shape[0])
+    np.subtract(theta, sub, out=theta)
 
 def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
     """ Run a single epoch of SGD for a two-layer neural network defined by the
@@ -118,8 +185,37 @@ def nn_epoch(X, y, W1, W2, lr = 0.1, batch=100):
         None
     """
     ### BEGIN YOUR CODE
-    pass
+    num_examples = X.shape[0]
+    i = 0
+    
+    while i + batch <= num_examples:
+        inputs = X[i:i+batch]
+        labels = y[i:i+batch]
+        nn_epoch_batch(inputs, labels, W1, W2, lr)
+        i += batch
+    
+    if i < num_examples:
+        inputs = X[i:num_examples]
+        labels = y[i:num_examples]
+        nn_epoch_batch(inputs, labels, W1, W2, lr)
     ### END YOUR CODE
+		
+def nn_epoch_batch(X, y, W1, W2, lr = 0.1, batch=100):
+    Z1 = np.maximum(X@W1,0) # [batch, d]
+    relu_mask = Z1 > 0
+    h = Z1@W2 # [batch, k]
+    eh = np.exp(h)
+    norm_eh = eh / eh.sum(axis=1, keepdims=True) # [batch, k]    
+    Iy_onehot = np.zeros((X.shape[0], W2.shape[1]), dtype=np.uint8)
+    np.put_along_axis(Iy_onehot, np.expand_dims(y, axis=1), 1, axis=1)
+    G2 = norm_eh - Iy_onehot # [batch, k]
+    G1 = relu_mask * (G2@W2.transpose()) # [batch, d]
+
+    gradient1 = X.transpose()@G1 / (X.shape[0])
+    gradient2 = Z1.transpose()@G2 / (X.shape[0])
+    
+    np.subtract(W1, gradient1*lr, out=W1)
+    np.subtract(W2, gradient2*lr, out=W2)
 
 
 
